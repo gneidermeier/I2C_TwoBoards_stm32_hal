@@ -37,7 +37,7 @@
 /* Private define ------------------------------------------------------------*/
 /* Uncomment this line to use the board as master, if not it is used as slave */
 #define MASTER_BOARD  // 1
-#define I2C_ADDRESS        0x30F
+#define I2C_ADDRESS        65
 
 /* I2C TIMING Register define when I2C clock source is SYSCLK */
 /* I2C TIMING is calculated in case of the I2C Clock source is the SYSCLK = 64 MHz */
@@ -113,67 +113,42 @@ int main(void)
   /* Enable the Analog I2C Filter */
   HAL_I2CEx_ConfigAnalogFilter(&I2cHandle,I2C_ANALOGFILTER_ENABLE);
 
+  /* Infinite loop */
+  while (1)
+  {
+      //      BSP_LED_Toggle(LED2);
 #ifdef MASTER_BOARD
 
-  /* Configure User push-button */
-  BSP_PB_Init(BUTTON_USER,BUTTON_MODE_GPIO);
-
-
-  sprintf(uart_out, "Start the peripheral device, then push the button w/i 10 secs.\r\n");
-  HAL_UART_Transmit(&huart2, (uint8_t *)uart_out, strlen(uart_out), 100);
-
-  /* Wait for User push-button press before starting the Communication */
-  while (BSP_PB_GetState(BUTTON_USER) != GPIO_PIN_RESET)
-  {
-  }
-
-  /* Delay to avoid that possible signal rebound is taken as button release */
-  HAL_Delay(50);
-
-  /* Wait for User push-button release before starting the Communication */
-  while (BSP_PB_GetState(BUTTON_USER) != GPIO_PIN_SET)
-  {
-  }
-
-  sprintf(uart_out, "Transmitting to Peripheral (10 sec timeout)\r\n");
+  sprintf(uart_out, "\r\nTransmitting to Peripheral (10 sec timeout)\r\n");
   HAL_UART_Transmit(&huart2, (uint8_t *)uart_out, strlen(uart_out), 100);
 
   /* The board sends the message and expects to receive it back */
+  /* Turn LED2 off: Transfer in process */
+  BSP_LED_Off(LED2);
 
   /*##-2- Start the transmission process #####################################*/  
   /* While the I2C in reception process, user can transmit data through 
      "aTxBuffer" buffer */
 
   /* Timeout is set to 10S */
-  while(HAL_I2C_Master_Transmit(&I2cHandle, (uint16_t)I2C_ADDRESS, (uint8_t*)aTxBuffer, TXBUFFERSIZE, 10000)!= HAL_OK)
+  while(HAL_I2C_Master_Transmit(
+          &I2cHandle, (uint16_t)I2C_ADDRESS, (uint8_t*)aTxBuffer, TXBUFFERSIZE, 10000)!= HAL_OK)
   {
     /* Error_Handler() function is called when Timeout error occurs.
        When Acknowledge failure occurs (Slave don't acknowledge its address)
        Master restarts communication */
-    if (HAL_I2C_GetError(&I2cHandle) != HAL_I2C_ERROR_AF)
+    if (HAL_I2C_GetError(&I2cHandle) == HAL_I2C_ERROR_AF)
     {
-      Error_Handler();
+        sprintf(uart_out, "Error HAL_I2C_ERROR_AF (address doesn't match)\r\n");
+        HAL_UART_Transmit(&huart2, (uint8_t *)uart_out, strlen(uart_out), 100);
     }
-  }
-
-  /* Turn LED2 on: Transfer in Transmission process is correct */
-  BSP_LED_On(LED2);
-
-  sprintf(uart_out, "Tx success (LED ON), push button to receive from Peripheral.\r\n");
-  HAL_UART_Transmit(&huart2, (uint8_t *)uart_out, strlen(uart_out), 100);
-
-
-  /* Wait for User push-button press before starting the Communication */
-  while (BSP_PB_GetState(BUTTON_USER) != GPIO_PIN_RESET)
-  {
-  }
-
-  /* Delay to avoid that possible signal rebound is taken as button release */
-  HAL_Delay(50);
-
-  /* Wait for User push-button release before starting the Communication */
-  while (BSP_PB_GetState(BUTTON_USER) != GPIO_PIN_SET)
-  {
+    else
+    {
+        sprintf(uart_out, "Timeout or other error\r\n");
+        HAL_UART_Transmit(&huart2, (uint8_t *)uart_out, strlen(uart_out), 100);
+    }
+    HAL_Delay(1000);
+    Error_Handler();
   }
 
   sprintf(uart_out, "Waiting response from Peripheral (10 sec timeout)\r\n");
@@ -192,54 +167,11 @@ int main(void)
     }
   }
 
-  /* Turn LED2 off: Transfer in reception process is correct */
-  BSP_LED_Off(LED2);
-
-  sprintf(uart_out, "Response from Peripheral \"%s\", verify (LED Off) ...\r\n", aRxBuffer);
-  HAL_UART_Transmit(&huart2, (uint8_t *)uart_out, strlen(uart_out), 100);
-
-#else // peripheral
-
-  sprintf(uart_out, "Waiting for Controller - push button on Controller w/i 10 seconds.\r\n");
-  HAL_UART_Transmit(&huart2, (uint8_t *)uart_out, strlen(uart_out), 100);
-  
-  /* The board receives the message and sends it back */
-
-  /*##-2- Put I2C peripheral in reception process ############################*/ 
-  /* Timeout is set to 10S  */
-  if(HAL_I2C_Slave_Receive(&I2cHandle, (uint8_t *)aRxBuffer, RXBUFFERSIZE, 10000) != HAL_OK)
-  {
-    /* Transfer error in reception process */
-    Error_Handler();
-  }
-
-  /* Turn LED2 on: Transfer in reception process is correct */
+  /* Turn LED2 on: Transfer complete */
   BSP_LED_On(LED2);
 
-  sprintf(uart_out, "Received \"%s\", responding (LED ON) ... 10 sec timout.\r\n", aRxBuffer);
+  sprintf(uart_out, "HAL_I2C_Master_Receive success, response from Peripheral: \"%s\".\r\n", aRxBuffer);
   HAL_UART_Transmit(&huart2, (uint8_t *)uart_out, strlen(uart_out), 100);
-
-
-// controller expects verbatim response
-
-  /*##-3- Start the transmission process #####################################*/  
-  /* While the I2C in reception process, user can transmit data through 
-     "aTxBuffer" buffer */
-
-  /* Timeout is set to 10S */
-  if(HAL_I2C_Slave_Transmit(&I2cHandle, (uint8_t*)aRxBuffer /* aTxBuffer */, TXBUFFERSIZE, 10000)!= HAL_OK)
-  {
-    /* Transfer error in transmission process */
-    Error_Handler();
-  }
-
-  /* Turn LED2 off: Transfer in transmission process is correct */
-  BSP_LED_Off(LED2);
-
-  sprintf(uart_out, "Rx from Controller (LED OFF), verify aRxBuffer ...\r\n");
-  HAL_UART_Transmit(&huart2, (uint8_t *)uart_out, strlen(uart_out), 100);
-  
-#endif /* MASTER_BOARD */
 
   /*##-4- Compare the sent and received buffers ##############################*/
   if(Buffercmp((uint8_t*)aTxBuffer,(uint8_t*)aRxBuffer,RXBUFFERSIZE))
@@ -248,14 +180,54 @@ int main(void)
     Error_Handler();
   }
 
-  sprintf(uart_out, "Success (LED 2 Hz)\r\n");
+  HAL_Delay(1000);
+
+#else // peripheral
+
+  sprintf(uart_out, "\r\nPeripheral Receive ...\r\n");
   HAL_UART_Transmit(&huart2, (uint8_t *)uart_out, strlen(uart_out), 100);
 
-  /* Infinite loop */
-  while (1)
+  /* The board receives the message and sends it back */
+
+  /*##-2- Put I2C peripheral in reception process ############################*/
+  uint32_t Timeout = 1000 * 30; /* Timeout is set to ... 10000? */
+  if(HAL_I2C_Slave_Receive(&I2cHandle, (uint8_t *)aRxBuffer, RXBUFFERSIZE, Timeout) != HAL_OK)
   {
-      BSP_LED_Toggle(LED2);
-        HAL_Delay(250);
+    uint32_t error = HAL_I2C_GetError(&I2cHandle);
+    //if (HAL_I2C_GetError(&I2cHandle) == HAL_I2C_ERROR_AF)
+    {
+        sprintf(uart_out, "I2C_Slave_Receive error (%d)\r\n", error);
+        HAL_UART_Transmit(&huart2, (uint8_t *)uart_out, strlen(uart_out), 100);
+    }
+    /* Transfer error in reception process */
+    Error_Handler();
+  }
+
+  /* Turn LED2 on: Transfer in process */
+  BSP_LED_On(LED2);
+
+  sprintf(uart_out, "... received \"%s\", responding.\r\n", aRxBuffer);
+  HAL_UART_Transmit(&huart2, (uint8_t *)uart_out, strlen(uart_out), 100);
+
+// controller expects verbatim response so we send the RxBuffer we just received
+
+  /*##-3- Start the transmission process #####################################*/
+  /* While the I2C in reception process, user can transmit data through "aTxBuffer" buffer */
+  /* Timeout is set to 10S */
+  if(HAL_I2C_Slave_Transmit(
+      &I2cHandle, (uint8_t*)aRxBuffer /* aTxBuffer */, /* TXBUFFERSIZE */ strlen((const char *)aRxBuffer), 10000)!= HAL_OK)
+  {
+    /* Transfer error in transmission process */
+    Error_Handler();
+  }
+
+  /* Turn LED2 off: Transfer in transmission process is correct */
+  BSP_LED_Off(LED2);
+
+  sprintf(uart_out, "I2C_Slave_Transmit success.\r\n");
+  HAL_UART_Transmit(&huart2, (uint8_t *)uart_out, strlen(uart_out), 100);
+  
+#endif /* MASTER_BOARD */
   }
 }
 
@@ -364,31 +336,12 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *I2cHandle)
 static void Error_Handler(void)
 {
   char uart_out[128];
-#ifdef MASTER_BOARD
-  sprintf(uart_out, "Controller: Error_Handler (LED 1Hz) ... hold button down 1 sec to reset.\r\n");
-#else
-  sprintf(uart_out, "Peripheral: Error_Handler (LED 1Hz) ... check the controller, hold button down 1 sec to reset.\r\n");
-#endif
+  sprintf(uart_out, "Error_Handler ... reset.\r\n");
   HAL_UART_Transmit(&huart2, (uint8_t *)uart_out, strlen(uart_out), 100);
 
-  /* Error if LED2 is slowly blinking (1 sec. period) */
   while(1)
   {
-    BSP_LED_Toggle(LED2); 
-    HAL_Delay(1000);
-
-    /* Wait for User push-button press before starting the Communication */
-    if (BSP_PB_GetState(BUTTON_USER) == GPIO_PIN_RESET)
-    {
-        /* Delay to avoid that possible signal rebound is taken as button release */
-        HAL_Delay(50);
-
-        /* Wait for User push-button release before starting the Communication */
-        while (BSP_PB_GetState(BUTTON_USER) != GPIO_PIN_SET)
-        {
-        }
-        NVIC_SystemReset();
-    }
+      NVIC_SystemReset();
   } 
 }
 
